@@ -1,4 +1,4 @@
-# videb
+# moddeb
 
 Easily edit the control archive for a deb package
 
