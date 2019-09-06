@@ -13,3 +13,7 @@ directory. Then, moddeb will prompt you for which files you want to edit. Once
 you are finished editing, it will write the new deb to
 `<somepackage>.modified.deb` in the current directory. If that file already
 exists, it asks you whether to overwrite, add a number to the name, or cancel.
+
+## License
+
+See the file named LICENSE.
