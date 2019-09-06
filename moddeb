@@ -1,0 +1,114 @@
+#!/bin/bash
+
+error() {
+    echo "$@" >&2
+    exit 1
+}
+
+# Make select menus give choices one per line
+COLUMNS=1
+
+# Basic checks on input
+if [[ -z "$1" ]]
+then
+    error "Usage: $0 <deb-package>"
+elif [[ -d "$1" ]]
+then
+    error "Error: $1 is a directory"
+elif [[ ! -r "$1" ]]
+then
+    error "Error: Cannot read $1"
+fi
+
+# Make a tmp directory
+tmpdir=$(mktemp --tmpdir -d deb.XXXXXXXX)
+if [[ $? -ne 0 ]]
+then
+    error "Could not create temp directory"
+fi
+# Make sure to clean up after ourselves
+trap "rm -rf \"$tmpdir\"" EXIT
+
+# Extract the control archive
+ar p "$1" control.tar.gz | tar -xzC "$tmpdir"
+
+# Allow user to make edits
+changed=""
+pushd "$tmpdir" > /dev/null
+PS3="Which do you want to edit (enter a number)? "
+# Let user pick between files in the current directory
+select f in "Finished making changes." *
+do
+    # Done if option 1 was chosen
+    if [[ $REPLY -eq 1 ]]
+    then
+        break
+    elif [[ -n "$f" ]]
+    then
+        # Edit file. Check if it was modified.
+        preedit_time=$(stat -c "%Y" "$f")
+        sensible-editor "$f"
+        echo
+        if [[ $preedit_time -ne $(stat -c "%Y" "$f") ]]
+        then
+            changed=yes
+        fi
+    fi
+done
+popd > /dev/null
+echo
+
+# If no changes, ask before continuing
+if [[ -z $changed ]]
+then
+    echo "There were no changes."
+    read -n 1 -p "Do you want to write anyway (y/N)? " choice
+    if [[ ${choice:0:1} != [yY] ]]
+    then
+        exit
+    fi
+    echo
+    echo
+fi
+
+# Find an unused output file
+outfile=$(basename "$1" .deb).modified.deb
+outfile_noexist="$outfile"
+i=0
+while [[ -e "$outfile_noexist" ]]
+do
+    i=$((i+1))
+    outfile_noexist=$(basename "$1" .deb).modified$i.deb
+done
+
+# Ask what to do in the case of existing output file
+if [[ $i -ne 0 ]]
+then
+    echo "$outfile exists."
+    PS3="What would you like to do (enter a number)? "
+    select choice in "Overwrite it" "Write to $outfile_noexist" "Cancel"
+    do
+        case $REPLY in
+            1)
+                break
+                ;;
+            2)
+                outfile="$outfile_noexist"
+                break
+                ;;
+            3)
+                exit
+                ;;
+            *)
+                echo "Invalid choice."
+                ;;
+        esac
+    done
+fi
+
+# Create the output file
+cp "$1" "$outfile"
+pushd "$tmpdir" > /dev/null
+tar -czf control.tar.gz *[!z]
+popd > /dev/null
+ar r "$outfile" "$tmpdir"/control.tar.gz
